@@ -1,0 +1,7 @@
+.env
+.env.*
+node_modules/
+.svelte-kit/
+dist/
+coverage/
+*.tgz
