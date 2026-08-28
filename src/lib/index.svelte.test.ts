@@ -204,6 +204,29 @@ describe('svelte-stash', () => {
 			expect(stash.state.theme.colour).toBe('blue');
 		});
 
+		it('should remove keys from state that no longer exist in loaded data', async () => {
+			type PartialState = { a: number; b?: number };
+			let source: PartialState = { a: 1, b: 2 };
+			const loadPartialCallback = vi.fn(() => source);
+			const savePartialCallback = vi.fn();
+
+			const stash = new Stash<PartialState>(
+				loadPartialCallback,
+				savePartialCallback,
+				debounceOptions
+			);
+
+			await stash.load();
+			expect(stash.state).toEqual({ a: 1, b: 2 });
+
+			source = { a: 1 };
+			await stash.load();
+
+			expect(stash.state).toEqual({ a: 1 });
+			expect('b' in stash.state).toBe(false);
+			expect(stash.state.b).toBeUndefined();
+		});
+
 		it('should update persistent array value independently', async () => {
 			type ArrayState = string[];
 			const arrayPersistenceState = ['first', 'second'];

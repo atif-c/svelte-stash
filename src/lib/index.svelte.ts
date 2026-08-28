@@ -160,7 +160,12 @@ export class Stash<T extends object> {
 			this.state.length = 0;
 			this.state.push(...cleanData);
 		} else if (this.state && !Array.isArray(this.state) && !Array.isArray(cleanData)) {
-			// If state already exists as Object, update in place
+			// If state already exists as Object, update in place, dropping stale keys
+			for (const key of Object.keys(this.state)) {
+				if (!Object.prototype.hasOwnProperty.call(cleanData as object, key)) {
+					delete (this.state as Record<string, unknown>)[key];
+				}
+			}
 			Object.assign(this.state, cleanData);
 		} else {
 			// If state is undefined (first load), or type changed, strictly replace it.
