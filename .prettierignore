@@ -1,10 +1,9 @@
 # Package Managers
-bun.lock
-bun.lockb
 package-lock.json
 pnpm-lock.yaml
-yarn.lock
 
-# Build Output
-/dist/
-/.svelte-kit/
+# Miscellaneous
+/static/
+node_modules/
+dist/
+.svelte-kit/
