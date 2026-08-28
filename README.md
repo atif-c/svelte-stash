@@ -161,9 +161,11 @@ By default, save errors surface as unhandled rejections. Use `onError` to handle
 | Option      | Type                       | Default | Description                                |
 | ----------- | -------------------------- | ------- | ------------------------------------------ |
 | `delay`     | `number`                   | `0`     | Milliseconds to wait after last change     |
-| `maxWait`   | `number`                   | `0`     | Maximum milliseconds before forcing a save |
+| `maxWait`   | `number`                   | —       | Maximum milliseconds before forcing a save |
 | `immediate` | `boolean`                  | `false` | Execute save immediately on first change   |
 | `onError`   | `(error: unknown) => void` | —       | Callback for handling save errors          |
+
+> `maxWait`, if provided, must be greater than or equal to `delay` (enforced by the underlying `debounce-ts` dependency).
 
 ### Properties
 

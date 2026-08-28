@@ -81,7 +81,9 @@ export class Stash<T extends object> {
 	 * @param saveCallback - Optional sync or async function to persist state changes
 	 *   Receives a deep clone of the current state snapshot
 	 * @param debounceOptions - Configuration for debouncing save operations
-	 *   Defaults: `{ delay: 0, maxWait: 0, immediate: false }`
+	 *   Defaults: `{ delay: 0, immediate: false }`. `maxWait` is left unset unless
+	 *   provided - debounce-ts requires `maxWait >= delay` and treats `0` as an
+	 *   active value, so forcing a `0` default would throw whenever `delay > 0`.
 	 *
 	 * @throws {Error} Re-throws any errors encountered during debounce function setup
 	 *
@@ -104,8 +106,8 @@ export class Stash<T extends object> {
 		this.#saveCallback = saveCallback;
 		this.debounceOptions = {
 			delay: debounceOptions?.delay ?? 0,
-			maxWait: debounceOptions?.maxWait ?? 0,
 			immediate: debounceOptions?.immediate ?? false,
+			...(debounceOptions?.maxWait !== undefined && { maxWait: debounceOptions.maxWait }),
 			...(debounceOptions?.onError && { onError: debounceOptions.onError })
 		};
 

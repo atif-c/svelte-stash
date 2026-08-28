@@ -66,10 +66,23 @@ describe('svelte-stash', () => {
 			expect(stash.debounceOptions).toBeDefined();
 			expect(stash.debounceOptions).toEqual({
 				delay: 0,
-				maxWait: 0,
 				immediate: false
 			});
+			expect(stash.debounceOptions.maxWait).toBeUndefined();
 			expect(stash.state).toBeUndefined();
+		});
+
+		it('should not throw when delay > 0 is provided without maxWait', () => {
+			// Regression test: omitting maxWait used to default it to 0, which
+			// debounce-ts rejects with `maxWait must be greater than or equal to delay`
+			// whenever delay > 0.
+			expect(
+				() => new Stash<StateType>(mockLoadCallback, mockSaveCallback, { delay: 500 })
+			).not.toThrow();
+
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, { delay: 500 });
+			expect(stash.debounceOptions).toEqual({ delay: 500, immediate: false });
+			expect(stash.debounceOptions.maxWait).toBeUndefined();
 		});
 
 		it('should initialise with onError callback', () => {
