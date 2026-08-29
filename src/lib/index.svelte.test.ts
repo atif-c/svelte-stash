@@ -754,7 +754,6 @@ describe('svelte-stash', () => {
 
 			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
 			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
-			0;
 		});
 
 		it('should set state to undefined after destroy', async () => {
