@@ -155,7 +155,16 @@ export class Stash<T extends object> {
 			return;
 		}
 		const loadedData = await this.#loadCallback();
-		const cleanData = structuredClone(loadedData);
+		let cleanData: T;
+		try {
+			cleanData = structuredClone(loadedData);
+		} catch (error) {
+			const err = error instanceof Error ? error : new Error(String(error));
+			throw new Error(
+				'Failed to clone loaded data in load(). This typically happens when loadCallback returns a non-cloneable value',
+				{ cause: err }
+			);
+		}
 
 		if (this.state && Array.isArray(this.state) && Array.isArray(cleanData)) {
 			// If state already exists as Array, update in place to preserve references
