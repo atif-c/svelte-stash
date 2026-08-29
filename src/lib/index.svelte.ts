@@ -118,9 +118,9 @@ export class Stash<T extends object> {
 					throw new Error('save() was called before load() resolved');
 				}
 
-				// Create a snapshot and deep clone to prevent mutations during async save
-				const stateSnapshot = structuredClone($state.snapshot(this.state)) as T;
-				await this.#saveCallback(stateSnapshot);
+			// Create a snapshot to prevent mutations during async save
+			const stateSnapshot = $state.snapshot(this.state) as T;
+			await this.#saveCallback!(stateSnapshot);
 			}, this.debounceOptions);
 		}
 	}
