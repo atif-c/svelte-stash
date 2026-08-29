@@ -323,6 +323,51 @@ describe('svelte-stash', () => {
 	});
 
 	describe('save()', () => {
+		it('should return a Promise', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			await stash.load();
+			const savePromise = stash.save();
+			expect(savePromise).toBeInstanceOf(Promise);
+		});
+
+		it('should resolve promise when save completes', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+
+			await stash.load();
+
+			const savePromise = stash.save();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+
+			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
+			await Promise.resolve();
+
+			await expect(savePromise).resolves.toBeUndefined();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
+		});
+
+		it('should return same promise for multiple save calls', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			await stash.load();
+
+			const promise1 = stash.save();
+			const promise2 = stash.save();
+			const promise3 = stash.save();
+
+			expect(promise1).toBe(promise2);
+			expect(promise2).toBe(promise3);
+
+			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
+			await expect(promise1).resolves.toBeUndefined();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
+
+			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
+			await expect(promise1).resolves.toBeUndefined();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
+		});
+
 		it('should handle sync saveCallback', async () => {
 			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
 			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
@@ -486,6 +531,40 @@ describe('svelte-stash', () => {
 	});
 
 	describe('flush()', () => {
+		it('should return a Promise', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			await stash.load();
+
+			stash.save();
+			const flushPromise = stash.flush();
+			expect(flushPromise).toBeInstanceOf(Promise);
+		});
+
+		it('should resolve promise when flush completes', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+
+			await stash.load();
+
+			stash.save();
+			const flushPromise = stash.flush();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
+
+			await expect(flushPromise).resolves.toBeUndefined();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
+		});
+
+		it('should return resolved promise when no save pending', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			await stash.load();
+
+			const flushPromise = stash.flush();
+			expect(flushPromise).toBeInstanceOf(Promise);
+			await expect(flushPromise).resolves.toBeUndefined();
+		});
+
 		it('should immediately execute pending save', async () => {
 			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
 			expect(mockSaveCallback).toHaveBeenCalledTimes(0);

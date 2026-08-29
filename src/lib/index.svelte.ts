@@ -74,6 +74,12 @@ export class Stash<T extends object> {
 	/** Flag to track if the stash has been destroyed */
 	private destroyed = false;
 
+	/** Promise that resolves when pending save completes */
+	private pendingSavePromise: Promise<void> | null = null;
+
+	/** Resolver function for pending save promise */
+	private resolvePendingSave: (() => void) | null = null;
+
 	/**
 	 * Creates a new Stash instance with load/save callbacks and debounce configuration.
 	 *
@@ -114,13 +120,22 @@ export class Stash<T extends object> {
 		// Create debounced save function if saveCallback is provided
 		if (this.#saveCallback) {
 			this.debouncedSave = debounce(async () => {
-				if (!this.state) {
-					throw new Error('save() was called before load() resolved');
-				}
+				try {
+					if (!this.state) {
+						throw new Error('save() was called before load() resolved');
+					}
 
-			// Create a snapshot to prevent mutations during async save
-			const stateSnapshot = $state.snapshot(this.state) as T;
-			await this.#saveCallback!(stateSnapshot);
+					// Create a snapshot to prevent mutations during async save
+					const stateSnapshot = $state.snapshot(this.state) as T;
+					await this.#saveCallback!(stateSnapshot);
+				} finally {
+					// Resolve pending save promise when save completes (success or error)
+					if (this.resolvePendingSave) {
+						this.resolvePendingSave();
+						this.pendingSavePromise = null;
+						this.resolvePendingSave = null;
+					}
+				}
 			}, this.debounceOptions);
 		}
 	}
@@ -190,8 +205,10 @@ export class Stash<T extends object> {
 	 * If debouncing is configured, this will use the debounced version.
 	 * If no saveCallback was provided during construction, this method does nothing.
 	 *
-	 * Note: This method returns immediately. The actual save operation is debounced
-	 * and executed asynchronously. Use {@link flush} to force immediate execution.
+	 * This method returns a promise that resolves when the save operation completes.
+	 * Multiple calls to save() will return the same promise until the save completes.
+	 * The actual save operation is debounced and executed asynchronously.
+	 * Use {@link flush} to force immediate execution.
 	 *
 	 * The save operation creates a deep clone of the current state snapshot to
 	 * prevent mutations during the asynchronous save process.
@@ -206,36 +223,53 @@ export class Stash<T extends object> {
 	 * @example
 	 * ```typescript
 	 * stash.state.theme = 'dark'; // Modify state
-	 * stash.save(); // Trigger save (may be debounced)
+	 * await stash.save(); // Trigger save and wait for completion
 	 * ```
 	 */
-	save = (): void => {
+	save = (): Promise<void> => {
 		if (this.destroyed) {
-			return;
+			return Promise.resolve();
 		}
 		if (this.debouncedSave) {
+			// If no pending promise, create one
+			if (!this.pendingSavePromise) {
+				this.pendingSavePromise = new Promise(resolve => {
+					this.resolvePendingSave = resolve;
+				});
+			}
+			// Call the debounced save
 			this.debouncedSave();
+			return this.pendingSavePromise;
 		}
+		return Promise.resolve();
 	};
 
 	/**
 	 * Immediately executes any pending debounced save operation and clears timers.
 	 *
+	 * Returns a promise that resolves when the save operation completes.
 	 * Useful for ensuring state is persisted before critical operations like
 	 * page unload, navigation, or application shutdown.
-	 * If no save is pending, this method does nothing.
+	 * If no save is pending, this method returns a resolved promise immediately.
+	 *
+	 * @returns Promise that resolves when pending save completes
 	 *
 	 * @example
 	 * ```typescript
-	 * window.addEventListener('beforeunload', () => {
-	 *     stash.flush();
+	 * window.addEventListener('beforeunload', (e) => {
+	 *     e.preventDefault();
+	 *     stash.flush().then(() => {
+	 *         window.location.href = '/next-page';
+	 *     });
 	 * });
 	 * ```
 	 */
-	flush = (): void => {
+	flush = (): Promise<void> => {
 		if (this.debouncedSave) {
 			this.debouncedSave.flush();
+			return this.pendingSavePromise || Promise.resolve();
 		}
+		return Promise.resolve();
 	};
 
 	/**

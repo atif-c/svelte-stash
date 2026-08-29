@@ -120,8 +120,13 @@ const gameState = new Stash(loadGame, saveGame, { immediate: true });
 const stash = new Stash(loadFn, saveFn, { delay: 500 });
 
 // Ensure pending saves complete before page closes
-window.addEventListener('beforeunload', () => {
-	stash.flush();
+window.addEventListener('beforeunload', async e => {
+	// Prevent default unload to allow time for save to complete
+	e.preventDefault();
+
+	// Wait for save to complete, then allow navigation
+	await stash.flush();
+	e.returnValue = true;
 });
 ```
 
@@ -174,8 +179,8 @@ By default, save errors surface as unhandled rejections. Use `onError` to handle
 ### Methods
 
 - **`load()`** — Loads state from persistent storage into reactive memory
-- **`save()`** — Manually triggers a sync from memory to persistent storage
-- **`flush()`** — Immediately executes any pending debounced save and clears timers
+- **`save()`** — Manually triggers a sync from memory to persistent storage. Returns a `Promise<void>` that resolves when the save completes.
+- **`flush()`** — Immediately executes any pending debounced save and clears timers. Returns a `Promise<void>` that resolves when the save completes.
 - **`cancel()`** — Cancels any pending debounced save without persisting
 
 ## Important Notes
