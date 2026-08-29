@@ -114,7 +114,9 @@ export class Stash<T extends object> {
 		// Create debounced save function if saveCallback is provided
 		if (this.#saveCallback) {
 			this.debouncedSave = debounce(async () => {
-				if (!this.#saveCallback || !this.state) return;
+				if (!this.state) {
+					throw new Error('save() was called before load() resolved');
+				}
 
 				// Create a snapshot and deep clone to prevent mutations during async save
 				const stateSnapshot = structuredClone($state.snapshot(this.state)) as T;

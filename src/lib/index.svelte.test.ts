@@ -453,6 +453,36 @@ describe('svelte-stash', () => {
 			expect(onError).toHaveBeenCalledTimes(1);
 			expect(onError).toHaveBeenNthCalledWith(1, expect.any(Error));
 		});
+
+		it('should surface an error via onError when save() is called before load() resolves', async () => {
+			const onError = vi.fn();
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, {
+				...debounceOptions,
+				onError
+			});
+
+			stash.save();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+			expect(onError).toHaveBeenCalledTimes(0);
+
+			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+			expect(onError).toHaveBeenCalledTimes(1);
+			expect(onError).toHaveBeenNthCalledWith(1, expect.any(Error));
+			expect(onError.mock.calls[0][0].message).toMatch('save() was called before load() resolved');
+		});
+
+		it('should still persist when load() resolves before the debounce delay elapses', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			stash.save();
+			await stash.load();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+
+			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
+			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
+			expect(mockSaveCallback).toHaveBeenNthCalledWith(1, stash.state);
+		});
 	});
 
 	describe('flush()', () => {
@@ -508,6 +538,22 @@ describe('svelte-stash', () => {
 
 			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
 			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+		});
+
+		it('should surface an error via onError when flush() is called before load() resolves', async () => {
+			const onError = vi.fn();
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, {
+				...debounceOptions,
+				onError
+			});
+
+			stash.save();
+			stash.flush();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+
+			await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+			expect(onError).toHaveBeenNthCalledWith(1, expect.any(Error));
+			expect(onError.mock.calls[0][0].message).toMatch(/save\(\) was called before load\(\)/);
 		});
 	});
 
