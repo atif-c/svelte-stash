@@ -181,6 +181,11 @@ export class Stash<T extends object> {
 			);
 		}
 
+		// Re-check if destroyed after await to prevent mutation after destruction
+		if (this.destroyed) {
+			return;
+		}
+
 		if (this.state && Array.isArray(this.state) && Array.isArray(cleanData)) {
 			// If state already exists as Array, update in place to preserve references
 			this.state.length = 0;
