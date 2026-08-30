@@ -74,17 +74,17 @@ export { settings };
 	let { state } = settings;
 
 	function toggleTheme() {
-		state.theme = state.theme === 'light' ? 'dark' : 'light';
+		state!.theme = state!.theme === 'light' ? 'dark' : 'light';
 	}
 </script>
 
 <button on:click={toggleTheme}>
-	Current theme: {state.theme}
+	Current theme: {state?.theme}
 	<!-- Updates instantly -->
 </button>
 
 <label>
-	<input type="checkbox" bind:checked={state.notifications} />
+	<input type="checkbox" bind:checked={state?.notifications} />
 	Enable notifications
 </label>
 ````
@@ -174,7 +174,7 @@ By default, save errors surface as unhandled rejections. Use `onError` to handle
 
 ### Properties
 
-- **`state`** — The reactive state object (Svelte 5 `$state`)
+- **`state`** — The reactive state object (Svelte 5 `$state`). Type is `T | undefined` — `undefined` until `load()` is called.
 
 ### Methods
 
@@ -193,9 +193,9 @@ By default, save errors surface as unhandled rejections. Use `onError` to handle
 
 ### Reactivity best practices
 
-- Mutate state fields directly: `stash.state.theme = 'dark'`
+- Mutate state fields directly: `stash.state!.theme = 'dark'` (use `!` after `load()` or `?.` for safety)
 - Avoid replacing the entire state object
-- Use `$state.snapshot(stash.state)` to get a non-reactive copy for external use
+- Use `$state.snapshot(stash.state)` to get a non-reactive copy for external use (check for `undefined` first)
 
 ## License
 

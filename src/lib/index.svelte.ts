@@ -14,8 +14,8 @@ export type { DebounceOptions };
  *   (functions, DOM nodes, certain class instances) will throw or lose behavior.
  *
  * Reactivity notes:
- * - `state` is initially `null` until `load()` is called.
- * - After loading, `state` is a `$state` object. Mutate its fields (e.g. `stash.state.theme = 'dark'`)
+ * - `state` is initially `undefined` until `load()` is called.
+ * - After loading, `state` is a `$state` object. Mutate its fields (e.g. `stash.state!.theme = 'dark'`)
  *   to trigger reactivity. Use `$state.snapshot(stash.state)` to read a non-reactive snapshot.
  *
  * Features:
@@ -307,7 +307,7 @@ export class Stash<T extends object> {
 	 * Destroys the Stash instance, cleaning up all resources.
 	 *
 	 * Cancels any pending save operations, nullifies the debounced save function,
-	 * and resets the state to null. Call this when the Stash is no longer needed,
+	 * and resets the state to undefined. Call this when the Stash is no longer needed,
 	 * such as during component unmounting, to prevent memory leaks.
 	 *
 	 * After calling destroy(), the Stash should not be used further.
