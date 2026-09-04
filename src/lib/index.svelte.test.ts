@@ -43,7 +43,6 @@ describe('svelte-stash', () => {
 			expect(stash).toBeDefined();
 			expect(stash.load).toBeDefined();
 			expect(stash.save).toBeDefined();
-			expect(stash.debounceOptions).toBeDefined();
 			expect(stash.state).toBeUndefined();
 		});
 
@@ -53,7 +52,6 @@ describe('svelte-stash', () => {
 			expect(stash).toBeDefined();
 			expect(stash.load).toBeDefined();
 			expect(stash.save).toBeDefined();
-			expect(stash.debounceOptions).toBeDefined();
 			expect(stash.state).toBeUndefined();
 		});
 
@@ -63,12 +61,6 @@ describe('svelte-stash', () => {
 			expect(stash).toBeDefined();
 			expect(stash.load).toBeDefined();
 			expect(stash.save).toBeDefined();
-			expect(stash.debounceOptions).toBeDefined();
-			expect(stash.debounceOptions).toEqual({
-				delay: 0,
-				immediate: false
-			});
-			expect(stash.debounceOptions.maxWait).toBeUndefined();
 			expect(stash.state).toBeUndefined();
 		});
 
@@ -79,10 +71,6 @@ describe('svelte-stash', () => {
 			expect(
 				() => new Stash<StateType>(mockLoadCallback, mockSaveCallback, { delay: 500 })
 			).not.toThrow();
-
-			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, { delay: 500 });
-			expect(stash.debounceOptions).toEqual({ delay: 500, immediate: false });
-			expect(stash.debounceOptions.maxWait).toBeUndefined();
 		});
 
 		it('should initialise with onError callback', () => {
@@ -95,8 +83,6 @@ describe('svelte-stash', () => {
 			expect(stash).toBeDefined();
 			expect(stash.load).toBeDefined();
 			expect(stash.save).toBeDefined();
-			expect(stash.debounceOptions).toBeDefined();
-			expect(stash.debounceOptions.onError).toBe(onError);
 			expect(stash.state).toBeUndefined();
 		});
 	});
@@ -765,6 +751,52 @@ describe('svelte-stash', () => {
 
 			stash.destroy();
 			expect(stash.state).toBeUndefined();
+		});
+	});
+
+	describe('encapsulation', () => {
+		it('should not expose internal fields as own properties', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			await stash.load();
+
+			expect(Object.keys(stash)).not.toContain('destroyed');
+			expect(Object.keys(stash)).not.toContain('debouncedSave');
+			expect(Object.keys(stash)).not.toContain('pendingSavePromise');
+			expect(Object.keys(stash)).not.toContain('resolvePendingSave');
+			expect(Object.keys(stash)).not.toContain('saveQueue');
+			expect(Object.keys(stash)).not.toContain('debounceOptions');
+
+			expect((stash as unknown as Record<string, unknown>)['destroyed']).toBeUndefined();
+			expect((stash as unknown as Record<string, unknown>)['debouncedSave']).toBeUndefined();
+			expect((stash as unknown as Record<string, unknown>)['debounceOptions']).toBeUndefined();
+		});
+	});
+
+	describe('toJSON()', () => {
+		it('should return undefined before load()', () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			expect(JSON.stringify(stash)).toBe(undefined);
+			expect(stash.toJSON()).toBeUndefined();
+		});
+
+		it('should serialize the loaded state, not internal fields', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			await stash.load();
+
+			expect(stash.toJSON()).toEqual(mockPersistentState);
+			expect(JSON.parse(JSON.stringify(stash))).toEqual(mockPersistentState);
+		});
+
+		it('should return undefined after destroy()', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			await stash.load();
+			stash.destroy();
+
+			expect(stash.toJSON()).toBeUndefined();
 		});
 	});
 });

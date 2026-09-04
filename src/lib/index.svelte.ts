@@ -66,22 +66,22 @@ export class Stash<T extends object> {
 	state = $state<T>();
 	#loadCallback: () => T | Promise<T>;
 	#saveCallback?: (storage: T) => void | Promise<void>;
-	readonly debounceOptions: Readonly<DebounceOptions>;
+	readonly #debounceOptions: Readonly<DebounceOptions>;
 
 	/** Debounced version of the save function, created during initialisation */
-	private debouncedSave: DebouncedFunction<[]> | null = null;
+	#debouncedSave: DebouncedFunction<[]> | null = null;
 
 	/** Flag to track if the stash has been destroyed */
-	private destroyed = false;
+	#destroyed = false;
 
 	/** Promise that resolves when pending save completes */
-	private pendingSavePromise: Promise<void> | null = null;
+	#pendingSavePromise: Promise<void> | null = null;
 
 	/** Resolver function for pending save promise */
-	private resolvePendingSave: (() => void) | null = null;
+	#resolvePendingSave: (() => void) | null = null;
 
 	/** Queue for serializing concurrent saves to prevent out-of-order persistence */
-	private saveQueue: Promise<void> = Promise.resolve();
+	#saveQueue: Promise<void> = Promise.resolve();
 
 	/**
 	 * Creates a new Stash instance with load/save callbacks and debounce configuration.
@@ -113,7 +113,7 @@ export class Stash<T extends object> {
 	) {
 		this.#loadCallback = loadCallback;
 		this.#saveCallback = saveCallback;
-		this.debounceOptions = {
+		this.#debounceOptions = {
 			delay: debounceOptions?.delay ?? 0,
 			immediate: debounceOptions?.immediate ?? false,
 			...(debounceOptions?.maxWait !== undefined && { maxWait: debounceOptions.maxWait }),
@@ -122,9 +122,9 @@ export class Stash<T extends object> {
 
 		// Create debounced save function if saveCallback is provided
 		if (this.#saveCallback) {
-			this.debouncedSave = debounce(async () => {
+			this.#debouncedSave = debounce(async () => {
 				// Chain saves to a queue to ensure they complete in order
-				this.saveQueue = this.saveQueue.then(async () => {
+				this.#saveQueue = this.#saveQueue.then(async () => {
 					try {
 						if (!this.state) {
 							throw new Error('save() was called before load() resolved');
@@ -135,14 +135,14 @@ export class Stash<T extends object> {
 						await this.#saveCallback!(stateSnapshot);
 					} finally {
 						// Resolve pending save promise when save completes (success or error)
-						if (this.resolvePendingSave) {
-							this.resolvePendingSave();
-							this.pendingSavePromise = null;
-							this.resolvePendingSave = null;
+						if (this.#resolvePendingSave) {
+							this.#resolvePendingSave();
+							this.#pendingSavePromise = null;
+							this.#resolvePendingSave = null;
 						}
 					}
 				});
-			}, this.debounceOptions);
+			}, this.#debounceOptions);
 		}
 	}
 
@@ -172,7 +172,7 @@ export class Stash<T extends object> {
 	 * ```
 	 */
 	load = async (): Promise<void> => {
-		if (this.destroyed) {
+		if (this.#destroyed) {
 			return;
 		}
 		const loadedData = await this.#loadCallback();
@@ -188,7 +188,7 @@ export class Stash<T extends object> {
 		}
 
 		// Re-check if destroyed after await to prevent mutation after destruction
-		if (this.destroyed) {
+		if (this.#destroyed) {
 			return;
 		}
 
@@ -238,19 +238,19 @@ export class Stash<T extends object> {
 	 * ```
 	 */
 	save = (): Promise<void> => {
-		if (this.destroyed) {
+		if (this.#destroyed) {
 			return Promise.resolve();
 		}
-		if (this.debouncedSave) {
+		if (this.#debouncedSave) {
 			// If no pending promise, create one
-			if (!this.pendingSavePromise) {
-				this.pendingSavePromise = new Promise(resolve => {
-					this.resolvePendingSave = resolve;
+			if (!this.#pendingSavePromise) {
+				this.#pendingSavePromise = new Promise(resolve => {
+					this.#resolvePendingSave = resolve;
 				});
 			}
 			// Call the debounced save
-			this.debouncedSave();
-			return this.pendingSavePromise;
+			this.#debouncedSave();
+			return this.#pendingSavePromise;
 		}
 		return Promise.resolve();
 	};
@@ -276,9 +276,9 @@ export class Stash<T extends object> {
 	 * ```
 	 */
 	flush = (): Promise<void> => {
-		if (this.debouncedSave) {
-			this.debouncedSave.flush();
-			return this.pendingSavePromise || Promise.resolve();
+		if (this.#debouncedSave) {
+			this.#debouncedSave.flush();
+			return this.#pendingSavePromise || Promise.resolve();
 		}
 		return Promise.resolve();
 	};
@@ -298,8 +298,8 @@ export class Stash<T extends object> {
 	 * ```
 	 */
 	cancel = (): void => {
-		if (this.debouncedSave) {
-			this.debouncedSave.cancel();
+		if (this.#debouncedSave) {
+			this.#debouncedSave.cancel();
 		}
 	};
 
@@ -321,10 +321,27 @@ export class Stash<T extends object> {
 	 * ```
 	 */
 	destroy = (): void => {
-		this.destroyed = true;
+		this.#destroyed = true;
 		this.cancel();
-		this.debouncedSave = null;
+		this.#debouncedSave = null;
 		this.state = undefined;
-		this.saveQueue = Promise.resolve();
+		this.#saveQueue = Promise.resolve();
 	};
+
+	/**
+	 * Returns a plain, non-reactive snapshot of `state` for serialization.
+	 *
+	 * Since `state` is implemented as a non-enumerable `$state` accessor, it is
+	 * omitted by default from `JSON.stringify()` and object spreads. This method
+	 * ensures `JSON.stringify(stash)` reflects the actual managed state rather
+	 * than internal bookkeeping fields.
+	 *
+	 * @example
+	 * ```typescript
+	 * JSON.stringify(stash); // Serializes stash.state, not internal fields
+	 * ```
+	 */
+	toJSON(): T | undefined {
+		return this.state === undefined ? undefined : ($state.snapshot(this.state) as T);
+	}
 }
