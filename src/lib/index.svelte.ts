@@ -20,7 +20,7 @@ export type { DebounceOptions };
  *
  * Features:
  * - Reactive state updates using Svelte's $state rune
- * - Automatic debounced saving to prevent excessive writes
+ * - Debounced save() to prevent excessive writes
  * - Deep cloning to prevent reference mutations
  * - Configurable debounce timing with immediate execution support
  * - Comprehensive error handling with logging

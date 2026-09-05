@@ -75,6 +75,7 @@ export { settings };
 
 	function toggleTheme() {
 		state!.theme = state!.theme === 'light' ? 'dark' : 'light';
+		settings.save();
 	}
 </script>
 
@@ -93,7 +94,7 @@ export { settings };
 
 1. **Load**: Storage → Memory (on initialization)
 2. **Mutate**: Direct in-memory changes (instant UI updates)
-3. **Sync**: Memory → Storage (debounced)
+3. **Sync**: Memory → Storage via `save()` (debounced)
 
 ### Custom debouncing
 
