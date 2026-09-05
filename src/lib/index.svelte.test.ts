@@ -306,6 +306,35 @@ describe('svelte-stash', () => {
 
 			await expect(stash.load()).rejects.toThrow('Async load failed');
 		});
+
+		it('should throw a wrapped error when loaded data is not cloneable', async () => {
+			const nonCloneableLoadCallback = vi.fn(
+				() => ({ count: 1, fn: () => {} }) as unknown as StateType
+			);
+
+			const stash = new Stash<StateType>(
+				nonCloneableLoadCallback,
+				mockSaveCallback,
+				debounceOptions
+			);
+			expect(nonCloneableLoadCallback).toHaveBeenCalledTimes(0);
+			expect(stash.state).toBeUndefined();
+
+			await expect(stash.load()).rejects.toThrow('Failed to clone loaded data in load()');
+			expect(nonCloneableLoadCallback).toHaveBeenCalledTimes(1);
+			expect(stash.state).toBeUndefined();
+		});
+
+		it('should preserve the original clone failure as the error cause', async () => {
+			const nonCloneableLoadCallback = vi.fn(() => ({ fn: () => {} }) as unknown as StateType);
+			const stash = new Stash<StateType>(
+				nonCloneableLoadCallback,
+				mockSaveCallback,
+				debounceOptions
+			);
+
+			await expect(stash.load()).rejects.toHaveProperty('cause');
+		});
 	});
 
 	describe('save()', () => {
