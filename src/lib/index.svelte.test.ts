@@ -735,6 +735,19 @@ describe('svelte-stash', () => {
 			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
 			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
 		});
+
+		it('should do nothing when no saveCallback provided', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, undefined, debounceOptions);
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+
+			await stash.load();
+			stash.save();
+			stash.cancel();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+
+			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+		});
 	});
 
 	describe('destroy()', () => {
