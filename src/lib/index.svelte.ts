@@ -180,10 +180,9 @@ export class Stash<T extends object> {
 		try {
 			cleanData = structuredClone(loadedData);
 		} catch (error) {
-			const err = error instanceof Error ? error : new Error(String(error));
 			throw new Error(
 				'Failed to clone loaded data in load(). This typically happens when loadCallback returns a non-cloneable value',
-				{ cause: err }
+				{ cause: error }
 			);
 		}
 
