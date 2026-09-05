@@ -335,6 +335,15 @@ describe('svelte-stash', () => {
 
 			await expect(stash.load()).rejects.toHaveProperty('cause');
 		});
+
+		it('should handle concurrent load() calls', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
+
+			await Promise.all([stash.load(), stash.load()]);
+
+			expect(mockLoadCallback).toHaveBeenCalledTimes(2);
+			expect(stash.state).toEqual(mockPersistentState);
+		});
 	});
 
 	describe('save()', () => {
