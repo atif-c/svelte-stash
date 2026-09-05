@@ -38,7 +38,7 @@ export type { DebounceOptions };
  * }
  *
  * // Create a state stash that syncs in-memory state with localStorage
- * const settingsstash = new Stash<UserSettings>(
+ * const settingsStash = new Stash<UserSettings>(
  * 	// Load callback - retrieves state from storage
  * 	async () => {
  * 		const saved = localStorage.getItem('userSettings');
@@ -59,7 +59,7 @@ export type { DebounceOptions };
  * );
  *
  * // Initialise: Load from persistent storage into reactive memory
- * await settingsstash.load();
+ * await settingsStash.load();
  * ```
  */
 export class Stash<T extends object> {
