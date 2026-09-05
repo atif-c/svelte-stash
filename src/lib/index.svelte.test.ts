@@ -288,7 +288,7 @@ describe('svelte-stash', () => {
 			expect(failingLoadCallback).toHaveBeenCalledTimes(0);
 			expect(stash.state).toBeUndefined();
 
-			expect(stash.load()).rejects.toThrow('Sync load failed');
+			await expect(stash.load()).rejects.toThrow('Sync load failed');
 		});
 
 		it('should throw when async loadCallback throws', async () => {
