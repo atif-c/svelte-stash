@@ -544,6 +544,37 @@ describe('svelte-stash', () => {
 			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
 			expect(mockSaveCallback).toHaveBeenNthCalledWith(1, stash.state);
 		});
+
+		it('should persist overlapping saves in order', async () => {
+			const completed: number[] = [];
+			const slowFirstSaveCallback = vi.fn(async (state: StateType) => {
+				const delayMs = state.count === 1 ? 100 : 10;
+				await new Promise(resolve => setTimeout(resolve, delayMs));
+				completed.push(state.count);
+			});
+
+			// Small delay so the second leading-edge save starts while the first
+			// (slow) save is still in-flight, forcing serialization to matter.
+			// Without #saveInFlight ordering this completes as [2, 1].
+			const stash = new Stash<StateType>(mockLoadCallback, slowFirstSaveCallback, {
+				delay: 20,
+				immediate: true
+			});
+
+			await stash.load();
+
+			stash.state.count = 1;
+			stash.save();
+			// Past the debounce cooldown (20ms) but well before the slow save (100ms) finishes.
+			await vi.advanceTimersByTimeAsync(25);
+
+			stash.state.count = 2;
+			stash.save();
+			await vi.advanceTimersByTimeAsync(500);
+
+			expect(slowFirstSaveCallback).toHaveBeenCalledTimes(2);
+			expect(completed).toEqual([1, 2]);
+		});
 	});
 
 	describe('flush()', () => {
