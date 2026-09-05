@@ -597,6 +597,28 @@ describe('svelte-stash', () => {
 			expect(slowFirstSaveCallback).toHaveBeenCalledTimes(2);
 			expect(completed).toEqual([1, 2]);
 		});
+
+		it('should snapshot state independently for save', async () => {
+			let captured: StateType | undefined;
+			const capturingSaveCallback = vi.fn((state: StateType) => {
+				captured = state;
+			});
+
+			const stash = new Stash<StateType>(mockLoadCallback, capturingSaveCallback, debounceOptions);
+
+			await stash.load();
+			stash.state!.theme.colour = 'blue';
+			stash.save();
+			await vi.advanceTimersByTimeAsync(debounceOptions.delay);
+
+			expect(capturingSaveCallback).toHaveBeenCalledTimes(1);
+			expect(captured!.theme.colour).toBe('blue');
+
+			// Mutating state after the save must not retroactively change the captured payload.
+			stash.state!.theme.colour = 'green';
+			expect(captured!.theme.colour).toBe('blue');
+			expect(captured).not.toBe(stash.state);
+		});
 	});
 
 	describe('flush()', () => {
