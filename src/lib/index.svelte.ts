@@ -80,8 +80,8 @@ export class Stash<T extends object> {
 	/** Resolver function for pending save promise */
 	#resolvePendingSave: (() => void) | null = null;
 
-	/** Queue for serializing concurrent saves to prevent out-of-order persistence */
-	#saveQueue: Promise<void> = Promise.resolve();
+	/** Tracks the in-flight save to serialize overlapping saves while keeping the idle path synchronous */
+	#saveInFlight: Promise<void> | null = null;
 
 	/**
 	 * Creates a new Stash instance with load/save callbacks and debounce configuration.
@@ -123,25 +123,42 @@ export class Stash<T extends object> {
 		// Create debounced save function if saveCallback is provided
 		if (this.#saveCallback) {
 			this.#debouncedSave = debounce(async () => {
-				// Chain saves to a queue to ensure they complete in order
-				this.#saveQueue = this.#saveQueue.then(async () => {
-					try {
-						if (!this.state) {
-							throw new Error('save() was called before load() resolved');
-						}
-
-						// Create a snapshot to prevent mutations during async save
-						const stateSnapshot = $state.snapshot(this.state) as T;
-						await this.#saveCallback!(stateSnapshot);
-					} finally {
-						// Resolve pending save promise when save completes (success or error)
-						if (this.#resolvePendingSave) {
-							this.#resolvePendingSave();
-							this.#pendingSavePromise = null;
-							this.#resolvePendingSave = null;
+				const previous = this.#saveInFlight;
+				const runSave = (async () => {
+					// Serialize behind any in-flight save; its own error is surfaced by its own run.
+					if (previous) {
+						try {
+							await previous;
+						} catch {
+							/* already surfaced via onError on the previous run */
 						}
 					}
-				});
+					if (!this.state) {
+						throw new Error('save() was called before load() resolved');
+					}
+
+					// Snapshot synchronously to decouple from later mutations during async save.
+					const stateSnapshot = $state.snapshot(this.state) as T;
+					await this.#saveCallback!(stateSnapshot);
+				})();
+
+				// Track ordering without turning a failure into an unhandled rejection.
+				const tracker = runSave.catch(() => {});
+				this.#saveInFlight = tracker;
+
+				try {
+					await runSave; // re-throw so debounce-ts routes it to onError
+				} finally {
+					if (this.#saveInFlight === tracker) {
+						this.#saveInFlight = null;
+					}
+					// Resolve pending save promise when save completes (success or error)
+					if (this.#resolvePendingSave) {
+						this.#resolvePendingSave();
+						this.#pendingSavePromise = null;
+						this.#resolvePendingSave = null;
+					}
+				}
 			}, this.#debounceOptions);
 		}
 	}
@@ -324,7 +341,7 @@ export class Stash<T extends object> {
 		this.cancel();
 		this.#debouncedSave = null;
 		this.state = undefined;
-		this.#saveQueue = Promise.resolve();
+		this.#saveInFlight = null;
 	};
 
 	/**
