@@ -430,6 +430,19 @@ describe('svelte-stash', () => {
 			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
 		});
 
+		it('should debounce with delay-only options (no maxWait)', async () => {
+			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, { delay: 500 });
+
+			await stash.load();
+			stash.save();
+			stash.save();
+			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
+
+			await vi.advanceTimersByTimeAsync(500);
+			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
+			expect(mockSaveCallback).toHaveBeenNthCalledWith(1, stash.state);
+		});
+
 		it('should not call save when no saveCallback provided', async () => {
 			const stash = new Stash<StateType>(mockLoadCallback, undefined, debounceOptions);
 			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
