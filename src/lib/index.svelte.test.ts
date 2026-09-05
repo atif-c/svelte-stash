@@ -848,6 +848,22 @@ describe('svelte-stash', () => {
 			stash.destroy();
 			expect(stash.state).toBeUndefined();
 		});
+
+		it('should not populate state when destroyed mid-load', async () => {
+			let resolveLoad!: (value: StateType) => void;
+			const pendingLoadCallback = vi.fn(
+				() => new Promise<StateType>(resolve => (resolveLoad = resolve))
+			);
+
+			const stash = new Stash<StateType>(pendingLoadCallback, mockSaveCallback, debounceOptions);
+			const loadPromise = stash.load();
+
+			stash.destroy();
+			resolveLoad(mockPersistentState);
+			await loadPromise;
+
+			expect(stash.state).toBeUndefined();
+		});
 	});
 
 	describe('encapsulation', () => {
