@@ -397,6 +397,7 @@ describe('svelte-stash', () => {
 		});
 
 		it('should handle async saveCallback', async () => {
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const asyncSaveCallback = vi.fn(async (state: StateType) => {});
 
 			const stash = new Stash<StateType>(mockLoadCallback, asyncSaveCallback, debounceOptions);
