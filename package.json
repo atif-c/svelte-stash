@@ -1,6 +1,6 @@
 {
 	"name": "svelte-stash",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "A lightweight state manager for Svelte 5",
 	"author": "Atif C <atifcdev@gmail.com>",
 	"license": "MIT",
