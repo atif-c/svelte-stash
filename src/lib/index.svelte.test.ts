@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Stash, type DebounceOptions } from './index.svelte.js';
 
 describe('svelte-stash', () => {
-	type StateType = {
+	interface StateType {
 		count: number;
 		darkMode: boolean;
 		theme: {
 			colour: string;
 		};
-	};
+	}
 
 	let mockPersistentState: StateType;
 	let debounceOptions: Required<Pick<DebounceOptions, 'delay' | 'maxWait' | 'immediate'>>;
@@ -191,7 +191,10 @@ describe('svelte-stash', () => {
 		});
 
 		it('should remove keys from state that no longer exist in loaded data', async () => {
-			type PartialState = { a: number; b?: number };
+			interface PartialState {
+				a: number;
+				b?: number;
+			}
 			let source: PartialState = { a: 1, b: 2 };
 			const loadPartialCallback = vi.fn(() => source);
 			const savePartialCallback = vi.fn();
