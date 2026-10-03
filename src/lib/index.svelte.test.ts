@@ -65,7 +65,7 @@ describe('svelte-stash', () => {
 		});
 
 		it('should not throw when delay > 0 is provided without maxWait', () => {
-			// Regression test: omitting maxWait used to default it to 0, which
+			// Regression test: omitting maxWait left it as 0, which
 			// debounce-ts rejects with `maxWait must be greater than or equal to delay`
 			// whenever delay > 0.
 			expect(
@@ -136,7 +136,7 @@ describe('svelte-stash', () => {
 			expect(stash.state).toEqual([]);
 		});
 
-		it('should update persistent object value independently ', async () => {
+		it('should keep loaded state independent of storage', async () => {
 			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
 			expect(mockLoadCallback).toHaveBeenCalledTimes(0);
 			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
@@ -162,7 +162,7 @@ describe('svelte-stash', () => {
 			expect(stash.state.theme.colour).toBe('blue');
 		});
 
-		it('should update state value object independently', async () => {
+		it('should leave storage unchanged until save runs', async () => {
 			const stash = new Stash<StateType>(mockLoadCallback, mockSaveCallback, debounceOptions);
 			expect(mockLoadCallback).toHaveBeenCalledTimes(0);
 			expect(mockSaveCallback).toHaveBeenCalledTimes(0);
@@ -496,7 +496,7 @@ describe('svelte-stash', () => {
 			expect(mockSaveCallback).toHaveBeenCalledTimes(1);
 		});
 
-		it('should throw when sync saveCallback throws', async () => {
+		it('should surface sync save errors through onError', async () => {
 			const onError = vi.fn();
 			const failingSaveCallback = vi.fn(() => {
 				throw new Error('Sync save failed');
@@ -518,7 +518,7 @@ describe('svelte-stash', () => {
 			expect(onError).toHaveBeenNthCalledWith(1, expect.any(Error));
 		});
 
-		it('should throw when async saveCallback throws', async () => {
+		it('should surface async save errors through onError', async () => {
 			const onError = vi.fn();
 			const asyncFailingSaveCallback = vi.fn(async () => {
 				throw new Error('Async save failed');
@@ -578,9 +578,8 @@ describe('svelte-stash', () => {
 				completed.push(state.count);
 			});
 
-			// Small delay so the second leading-edge save starts while the first
-			// (slow) save is still in-flight, forcing serialization to matter.
-			// Without #saveInFlight ordering this completes as [2, 1].
+			// Small delay, so the second leading-edge save starts while the slow
+			// first save still runs. Without ordering this completes as [2, 1].
 			const stash = new Stash<StateType>(mockLoadCallback, slowFirstSaveCallback, {
 				delay: 20,
 				immediate: true
@@ -590,7 +589,7 @@ describe('svelte-stash', () => {
 
 			stash.state.count = 1;
 			stash.save();
-			// Past the debounce cooldown (20ms) but well before the slow save (100ms) finishes.
+			// Past the 20ms cooldown, before the 100ms save finishes.
 			await vi.advanceTimersByTimeAsync(25);
 
 			stash.state.count = 2;
@@ -617,7 +616,7 @@ describe('svelte-stash', () => {
 			expect(capturingSaveCallback).toHaveBeenCalledTimes(1);
 			expect(captured!.theme.colour).toBe('blue');
 
-			// Mutating state after the save must not retroactively change the captured payload.
+			// Later edits must not change the captured payload.
 			stash.state!.theme.colour = 'green';
 			expect(captured!.theme.colour).toBe('blue');
 			expect(captured).not.toBe(stash.state);

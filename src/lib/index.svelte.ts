@@ -3,27 +3,19 @@ import { debounce, type DebouncedFunction, type DebounceOptions } from 'debounce
 export type { DebounceOptions };
 
 /**
- * Svelte 5 generic state management utility for managing reactive object state with automatic persistence.
- * Provides asynchronous loading and saving of state via callbacks, with built-in
- * debouncing to optimize save operations and prevent excessive writes.
+ * Reactive state manager with storage sync for Svelte 5.
+ * Loads storage into `$state` and saves edits back through debounced callbacks.
  *
  * Source: {@link https://github.com/atif-c/svelte-stash atif-c/svelte-stash}
  *
- *  Type constraints:
- * - `T` must be structured-cloneable/serializable. Values that cannot be cloned
- *   (functions, DOM nodes, certain class instances) will throw or lose behavior.
+ * Type constraints:
+ * - `T` must be structured-cloneable. Values that cannot be cloned
+ *   (functions, DOM nodes, some class instances) throw on clone.
  *
  * Reactivity notes:
- * - `state` is initially `undefined` until `load()` is called.
- * - After loading, `state` is a `$state` object. Mutate its fields (e.g. `stash.state!.theme = 'dark'`)
- *   to trigger reactivity. Use `$state.snapshot(stash.state)` to read a non-reactive snapshot.
- *
- * Features:
- * - Reactive state updates using Svelte's $state rune
- * - Debounced save() to prevent excessive writes
- * - Deep cloning to prevent reference mutations
- * - Configurable debounce timing with immediate execution support
- * - Comprehensive error handling with logging
+ * - `state` stays `undefined` until `load()` runs.
+ * - After loading, `state` is a `$state` object. Edit its fields (e.g. `settings.state!.theme = 'dark'`)
+ *   to trigger reactivity. Check for `undefined` first. Read outside Svelte through `$state.snapshot`.
  *
  * @template T - The shape of the managed state object (must be an object with string keys)
  *
@@ -37,9 +29,9 @@ export type { DebounceOptions };
  * 	notifications: boolean;
  * }
  *
- * // Create a state stash that syncs in-memory state with localStorage
- * const settingsStash = new Stash<UserSettings>(
- * 	// Load callback - retrieves state from storage
+ * // Syncs in-memory state with localStorage
+ * const settings = new Stash<UserSettings>(
+ * 	// Load callback: reads state from storage
  * 	async () => {
  * 		const saved = localStorage.getItem('userSettings');
  * 		return saved
@@ -50,16 +42,16 @@ export type { DebounceOptions };
  * 					notifications: true
  * 				};
  * 	},
- * 	// Save function - persist state changes
+ * 	// Save callback: writes state to storage
  * 	async data => {
  * 		localStorage.setItem('userSettings', JSON.stringify(data));
  * 	},
- * 	// Debounce options - optimize storage writes
+ * 	// Debounce options: limits storage writes
  * 	{ delay: 500, maxWait: 2000 }
  * );
  *
- * // Initialise: Load from persistent storage into reactive memory
- * await settingsStash.load();
+ * // Initialise: loads storage into state
+ * await settings.load();
  * ```
  */
 export class Stash<T extends object> {
@@ -68,37 +60,35 @@ export class Stash<T extends object> {
 	#saveCallback?: (storage: T) => void | Promise<void>;
 	readonly #debounceOptions: Readonly<DebounceOptions>;
 
-	/** Debounced version of the save function, created during initialisation */
+	/** Debounced save runner. Null without a save callback. */
 	#debouncedSave: DebouncedFunction<[]> | null = null;
 
-	/** Flag to track if the stash has been destroyed */
+	/** Tracks destruction. Blocks later loads and saves. */
 	#destroyed = false;
 
-	/** Promise that resolves when pending save completes */
+	/** Resolves when the pending save completes. */
 	#pendingSavePromise: Promise<void> | null = null;
 
-	/** Resolver function for pending save promise */
+	/** Resolves the pending save promise. */
 	#resolvePendingSave: (() => void) | null = null;
 
-	/** Tracks the in-flight save to serialize overlapping saves while keeping the idle path synchronous */
+	/** Serializes overlapping saves. Keeps the idle path synchronous. */
 	#saveInFlight: Promise<void> | null = null;
 
 	/**
-	 * Creates a new Stash instance with load/save callbacks and debounce configuration.
+	 * Creates a stash with load and save callbacks and debounce options.
 	 *
-	 * @param loadCallback - Sync or async function that retrieves the initial state object
-	 * @param saveCallback - Optional sync or async function to persist state changes
-	 *   Receives a deep clone of the current state snapshot
-	 * @param debounceOptions - Configuration for debouncing save operations
-	 *   Defaults: `{ delay: 0, immediate: false }`. `maxWait` is left unset unless
-	 *   provided - debounce-ts requires `maxWait >= delay` and treats `0` as an
-	 *   active value, so forcing a `0` default would throw whenever `delay > 0`.
+	 * @param loadCallback - Returns the full state object. Runs sync or async.
+	 * @param saveCallback - Optional. Persists a snapshot of state. Runs sync or async.
+	 * @param debounceOptions - Optional. Defaults to `{ delay: 0, immediate: false }`.
+	 *   Leaves `maxWait` unset unless provided: `debounce-ts` needs `maxWait >= delay`
+	 *   and reads `0` as set, so a forced `0` default throws when `delay > 0`.
 	 *
-	 * @throws {Error} Re-throws any errors encountered during debounce function setup
+	 * @throws {Error} Rethrows debounce setup errors.
 	 *
 	 * @example
 	 * ```typescript
-	 * // Simple localStorage-based state stash
+	 * // Minimal storage-backed stash
 	 * const stash = new Stash(
 	 *   () => JSON.parse(localStorage.getItem('data') || '{}'),
 	 *   (data) => localStorage.setItem('data', JSON.stringify(data)),
@@ -120,39 +110,38 @@ export class Stash<T extends object> {
 			...(debounceOptions?.onError && { onError: debounceOptions.onError })
 		};
 
-		// Create debounced save function if saveCallback is provided
 		if (this.#saveCallback) {
 			this.#debouncedSave = debounce(async () => {
 				const previous = this.#saveInFlight;
 				const runSave = (async () => {
-					// Serialize behind any in-flight save; its own error is surfaced by its own run.
+					// Waits for the in-flight save first; its error stays with its own run.
 					if (previous) {
 						try {
 							await previous;
 						} catch {
-							/* already surfaced via onError on the previous run */
+							/* The previous run surfaces its own error. */
 						}
 					}
 					if (!this.state) {
 						throw new Error('save() was called before load() resolved');
 					}
 
-					// Snapshot synchronously to decouple from later mutations during async save.
+					// Snapshots state now, so later edits cannot corrupt the write.
 					const stateSnapshot = $state.snapshot(this.state) as T;
 					await this.#saveCallback!(stateSnapshot);
 				})();
 
-				// Track ordering without turning a failure into an unhandled rejection.
+				// Tracks order without turning a failure into an unhandled rejection.
 				const tracker = runSave.catch(() => {});
 				this.#saveInFlight = tracker;
 
 				try {
-					await runSave; // re-throw so debounce-ts routes it to onError
+					await runSave; // Rethrows, so debounce-ts routes the error to onError.
 				} finally {
 					if (this.#saveInFlight === tracker) {
 						this.#saveInFlight = null;
 					}
-					// Resolve pending save promise when save completes (success or error)
+					// Resolves the save promise after success or error.
 					if (this.#resolvePendingSave) {
 						this.#resolvePendingSave();
 						this.#pendingSavePromise = null;
@@ -164,28 +153,21 @@ export class Stash<T extends object> {
 	}
 
 	/**
-	 * Loads state data using the configured loadCallback.
+	 * Loads storage into state through the load callback.
 	 *
-	 * Uses structured cloning to ensure the loaded data is completely independent
-	 * from the original source, preventing unintended mutations that could affect
-	 * the data source or cause unexpected behavior.
+	 * Clones the result with `structuredClone`, so state and storage share no references.
+	 * Updates arrays and objects in place to keep references. Replaces state on first load or type change.
+	 * Drops object keys missing from the loaded data.
 	 *
-	 * Handles both objects and arrays intelligently:
-	 * - For arrays: Updates in place by clearing and pushing items to preserve references
-	 * - For objects: Updates in place using Object.assign to preserve references
-	 * - On first load or type change: Replaces state entirely
+	 * @returns Promise for completion. State holds the loaded data after it resolves.
 	 *
-	 * After loading completes, `state` will be populated with the loaded data.
-	 *
-	 * @returns Promise that resolves when loading is complete and state is populated
-	 *
-	 * @throws {Error} Re-throws any error from the loadCallback
+	 * @throws {Error} Rethrows load callback errors and clone failures.
 	 *
 	 * @example
 	 * ```typescript
 	 * const stash = new Stash(loadFn, saveFn);
 	 * await stash.load(); // Initialise state from storage
-	 * console.log(stash.state); // Now contains loaded data
+	 * console.log(stash.state); // Holds the loaded data
 	 * ```
 	 */
 	load = async (): Promise<void> => {
@@ -203,17 +185,17 @@ export class Stash<T extends object> {
 			);
 		}
 
-		// Re-check if destroyed after await to prevent mutation after destruction
+		// Rechecks destruction after `await`. Blocks writes after `destroy()`.
 		if (this.#destroyed) {
 			return;
 		}
 
 		if (this.state && Array.isArray(this.state) && Array.isArray(cleanData)) {
-			// If state already exists as Array, update in place to preserve references
+			// Updates arrays in place. Keeps references.
 			this.state.length = 0;
 			this.state.push(...cleanData);
 		} else if (this.state && !Array.isArray(this.state) && !Array.isArray(cleanData)) {
-			// If state already exists as Object, update in place, dropping stale keys
+			// Updates objects in place. Drops stale keys.
 			for (const key of Object.keys(this.state)) {
 				if (!Object.prototype.hasOwnProperty.call(cleanData as object, key)) {
 					delete (this.state as Record<string, unknown>)[key];
@@ -221,36 +203,23 @@ export class Stash<T extends object> {
 			}
 			Object.assign(this.state, cleanData);
 		} else {
-			// If state is undefined (first load), or type changed, strictly replace it.
+			// Replaces state on first load or type change.
 			this.state = cleanData;
 		}
 	};
 
 	/**
-	 * Triggers a save operation using the configured saveCallback.
+	 * Saves state to storage through the save callback (debounced).
 	 *
-	 * If debouncing is configured, this will use the debounced version.
-	 * If no saveCallback was provided during construction, this method does nothing.
+	 * Does nothing without a save callback. Passes a snapshot, so later edits cannot corrupt the write.
+	 * Repeated calls share one promise. Use {@link flush} to run now. Use {@link cancel} to drop the save.
 	 *
-	 * This method returns a promise that resolves when the save operation completes.
-	 * Multiple calls to save() will return the same promise until the save completes.
-	 * The actual save operation is debounced and executed asynchronously.
-	 * Use {@link flush} to force immediate execution.
-	 *
-	 * The save operation creates a deep clone of the current state snapshot to
-	 * prevent mutations during the asynchronous save process.
-	 *
-	 * Related methods:
-	 * - Use {@link flush} to immediately execute any pending save
-	 * - Use {@link cancel} to discard pending saves without persisting
-	 *
-	 * @throws {Error} Errors from the save callback will surface as unhandled rejections
-	 *                unless an onError callback is provided in debounceOptions.
+	 * @throws {Error} Without `onError`, save errors surface as unhandled rejections.
 	 *
 	 * @example
 	 * ```typescript
-	 * stash.state.theme = 'dark'; // Modify state
-	 * await stash.save(); // Trigger save and wait for completion
+	 * settings.state!.theme = 'dark';
+	 * await settings.save();
 	 * ```
 	 */
 	save = (): Promise<void> => {
@@ -258,13 +227,11 @@ export class Stash<T extends object> {
 			return Promise.resolve();
 		}
 		if (this.#debouncedSave) {
-			// If no pending promise, create one
 			if (!this.#pendingSavePromise) {
 				this.#pendingSavePromise = new Promise(resolve => {
 					this.#resolvePendingSave = resolve;
 				});
 			}
-			// Call the debounced save
 			this.#debouncedSave();
 			return this.#pendingSavePromise;
 		}
@@ -272,22 +239,17 @@ export class Stash<T extends object> {
 	};
 
 	/**
-	 * Immediately executes any pending debounced save operation and clears timers.
+	 * Runs any pending save at once and clears timers.
 	 *
-	 * Returns a promise that resolves when the save operation completes.
-	 * Useful for ensuring state is persisted before critical operations like
-	 * page unload, navigation, or application shutdown.
-	 * If no save is pending, this method returns a resolved promise immediately.
+	 * Call before page unload, navigation or shutdown. Without a pending save,
+	 * returns a resolved promise.
 	 *
-	 * @returns Promise that resolves when pending save completes
+	 * @returns Promise for completion of the pending save.
 	 *
 	 * @example
 	 * ```typescript
-	 * window.addEventListener('beforeunload', (e) => {
-	 *     e.preventDefault();
-	 *     stash.flush().then(() => {
-	 *         window.location.href = '/next-page';
-	 *     });
+	 * window.addEventListener('beforeunload', () => {
+	 * 	void settings.flush();
 	 * });
 	 * ```
 	 */
@@ -300,16 +262,15 @@ export class Stash<T extends object> {
 	};
 
 	/**
-	 * Cancels any pending debounced save operation and clears timers.
+	 * Drops any pending save without persisting.
 	 *
-	 * Useful when you want to discard pending changes without persisting them,
-	 * such as when a user clicks "Cancel" or "Discard changes".
+	 * Call to discard edits, then `load()` to restore storage.
 	 *
 	 * @example
 	 * ```typescript
 	 * async function discardChanges() {
-	 *     stash.cancel();       // Cancel pending save
-	 *     await stash.load();   // Reload from storage
+	 * 	settings.cancel();
+	 * 	await settings.load();
 	 * }
 	 * ```
 	 */
@@ -320,19 +281,16 @@ export class Stash<T extends object> {
 	};
 
 	/**
-	 * Destroys the Stash instance, cleaning up all resources.
+	 * Cancels pending saves and resets state to `undefined`.
 	 *
-	 * Cancels any pending save operations, nullifies the debounced save function,
-	 * and resets the state to undefined. Call this when the Stash is no longer needed,
-	 * such as during component unmounting, to prevent memory leaks.
-	 *
-	 * After calling destroy(), the Stash should not be used further.
+	 * Call on cleanup (for example component unmount) to avoid leaks.
+	 * Do not reuse the stash after this call.
 	 *
 	 * @example
 	 * ```typescript
 	 * // In a Svelte component
 	 * onDestroy(() => {
-	 *     stash.destroy();
+	 * 	settings.destroy();
 	 * });
 	 * ```
 	 */
@@ -345,16 +303,14 @@ export class Stash<T extends object> {
 	};
 
 	/**
-	 * Returns a plain, non-reactive snapshot of `state` for serialization.
+	 * Returns a plain snapshot of `state` for serialization.
 	 *
-	 * Since `state` is implemented as a non-enumerable `$state` accessor, it is
-	 * omitted by default from `JSON.stringify()` and object spreads. This method
-	 * ensures `JSON.stringify(stash)` reflects the actual managed state rather
-	 * than internal bookkeeping fields.
+	 * `state` hides behind a `$state` accessor, so `JSON.stringify` and spreads skip it.
+	 * This method exposes the snapshot instead.
 	 *
 	 * @example
 	 * ```typescript
-	 * JSON.stringify(stash); // Serializes stash.state, not internal fields
+	 * JSON.stringify(settings); // Serializes the snapshot, not internal fields
 	 * ```
 	 */
 	toJSON(): T | undefined {

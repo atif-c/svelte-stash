@@ -3,17 +3,17 @@
 [![GitHub Repo](https://img.shields.io/badge/GitHub-atif--c%2Fsvelte--stash-blue?logo=github)](https://github.com/atif-c/svelte-stash)
 [![npm Package](https://img.shields.io/npm/v/svelte-stash?logo=npm)](https://npmjs.com/package/svelte-stash)
 
-A lightweight, generic state management class for Svelte 5 projects that **bridges in-memory reactive state with persistent storage**. Uses Svelte 5 `$state` runes, letting you sync with your chosen storage backend (localStorage, APIs, databases, etc.).
+A lightweight state manager for Svelte 5. It keeps in-memory state in sync with a storage backend (localStorage, API, database).
 
-> **Requires Svelte 5.0.0 or higher** - This package uses Svelte 5's `$state` runes and will not work with Svelte 4 or earlier versions.
+> **Requires Svelte 5** - Uses the `$state` rune. Does not work with Svelte 4 or earlier.
 
 ## Features
 
-- Extends Svelte 5's `$state` rune for automatic reactivity
-- Configurable Debouncing
-- Works with any storage backend (localStorage, database, API endpoints, etc.)
-- Full TypeScript support with generic type constraints
-- Prevents reference mutations between state and storage
+- Uses the Svelte 5 `$state` rune for reactivity
+- Debounces saves with configurable timing
+- Works with any storage backend (localStorage, database, API)
+- Types state through generics
+- Clones data between state and storage to block shared references
 
 ## Installation
 
@@ -21,7 +21,7 @@ A lightweight, generic state management class for Svelte 5 projects that **bridg
 npm install svelte-stash
 ```
 
-The package has one peer dependency: **Svelte 5**
+The package needs one peer dependency: **Svelte 5**
 
 ## Usage
 
@@ -36,9 +36,9 @@ interface UserSettings {
 	notifications: boolean;
 }
 
-// Create a stash that syncs in-memory state with localStorage
+// Syncs in-memory state with localStorage
 const settings = new Stash<UserSettings>(
-	// Load callback - retrieves state from storage
+	// Load callback: reads state from storage
 	async () => {
 		const saved = localStorage.getItem('userSettings');
 		return saved
@@ -49,18 +49,17 @@ const settings = new Stash<UserSettings>(
 					notifications: true
 				};
 	},
-	// Save function - persist state changes
+	// Save callback: writes state to storage
 	async data => {
 		localStorage.setItem('userSettings', JSON.stringify(data));
 	},
-	// Debounce options - optimize storage writes
+	// Debounce options: limits storage writes
 	{ delay: 500, maxWait: 2000 }
 );
 
-// Initialise: Load from persistent storage into reactive memory
+// Initialise: loads storage into state
 await settings.load();
 
-// Export state
 export { settings };
 ```
 
@@ -70,7 +69,7 @@ export { settings };
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
 
-	// The state is reactive in-memory - changes instantly update the UI
+	// Edits to state update the UI at once
 	let { state } = settings;
 
 	function toggleTheme() {
@@ -81,7 +80,6 @@ export { settings };
 
 <button on:click={toggleTheme}>
 	Current theme: {state?.theme}
-	<!-- Updates instantly -->
 </button>
 
 <label>
@@ -92,11 +90,11 @@ export { settings };
 
 **How it works:**
 
-1. **Load**: Storage → Memory (on initialization)
-2. **Mutate**: Direct in-memory changes (instant UI updates)
-3. **Sync**: Memory → Storage via `save()` (debounced)
+1. **Load**: storage → state (on start)
+2. **Mutate**: edit state directly (UI updates at once)
+3. **Sync**: state → storage through `save()` (debounced)
 
-### Custom debouncing
+### Custom debounce
 
 ```typescript
 const stash = new Stash(loadFn, saveFn, {
@@ -106,26 +104,23 @@ const stash = new Stash(loadFn, saveFn, {
 });
 ```
 
-### Multiple stashs
+### Multiple stashes
 
 ```typescript
-// Separate stashs for different concerns
+// One stash per concern
 const userSettings = new Stash(loadUserSettings, saveUserSettings);
 const appCache = new Stash(loadCache, saveCache, { delay: 100 });
 const gameState = new Stash(loadGame, saveGame, { immediate: true });
 ```
 
-### Force save before page close
+### Save before page close
 
 ```typescript
 const stash = new Stash(loadFn, saveFn, { delay: 500 });
 
-// Ensure pending saves complete before page closes
+// Caution: the browser can close before async saves finish.
 window.addEventListener('beforeunload', async e => {
-	// Prevent default unload to allow time for save to complete
 	e.preventDefault();
-
-	// Wait for save to complete, then allow navigation
 	await stash.flush();
 	e.returnValue = true;
 });
@@ -135,8 +130,8 @@ window.addEventListener('beforeunload', async e => {
 
 ```typescript
 async function discardChanges() {
-	stash.cancel(); // Cancel pending save
-	await stash.load(); // Reload original state from storage
+	stash.cancel();
+	await stash.load();
 }
 ```
 
@@ -152,7 +147,7 @@ const stash = new Stash(loadFn, saveFn, {
 });
 ```
 
-By default, save errors surface as unhandled rejections. Use `onError` to handle them explicitly. Load errors are thrown and should be caught with try-catch.
+Without `onError`, save errors surface as unhandled rejections. Pass `onError` to handle save errors. Wrap `load()` in try-catch: load errors throw.
 
 ## API
 
@@ -160,9 +155,9 @@ By default, save errors surface as unhandled rejections. Use `onError` to handle
 
 **Parameters:**
 
-- `loadCallback` — Function to load initial state data (sync or async). Should return the complete state object.
-- `saveCallback` _(optional)_ — Function to persist state changes. Receives a deep clone of current state (sync or async).
-- `debounceOptions` _(optional)_ — Configuration for save debouncing:
+- `loadCallback` — Returns the full state object. Runs sync or async.
+- `saveCallback` _(optional)_ — Persists state changes. Receives a snapshot of state. Runs sync or async.
+- `debounceOptions` _(optional)_ — Debounce config for saves:
 
 | Option      | Type                       | Default | Description                                |
 | ----------- | -------------------------- | ------- | ------------------------------------------ |
@@ -171,32 +166,34 @@ By default, save errors surface as unhandled rejections. Use `onError` to handle
 | `immediate` | `boolean`                  | `false` | Execute save immediately on first change   |
 | `onError`   | `(error: unknown) => void` | —       | Callback for handling save errors          |
 
-> `maxWait`, if provided, must be greater than or equal to `delay` (enforced by the underlying `debounce-ts` dependency).
+> `maxWait` must be at least `delay`. The `debounce-ts` dependency enforces this.
 
 ### Properties
 
-- **`state`** — The reactive state object (Svelte 5 `$state`). Type is `T | undefined` — `undefined` until `load()` is called.
+- **`state`** — Reactive state (`$state`). Type: `T | undefined`. Stays `undefined` until `load()` runs.
 
 ### Methods
 
-- **`load()`** — Loads state from persistent storage into reactive memory
-- **`save()`** — Manually triggers a sync from memory to persistent storage. Returns a `Promise<void>` that resolves when the save completes.
-- **`flush()`** — Immediately executes any pending debounced save and clears timers. Returns a `Promise<void>` that resolves when the save completes.
-- **`cancel()`** — Cancels any pending debounced save without persisting
+- **`load()`** — Loads storage into state
+- **`save()`** — Saves state to storage (debounced). Returns a `Promise<void>` for completion.
+- **`flush()`** — Runs any pending save at once and clears timers. Returns a `Promise<void>` for completion.
+- **`cancel()`** — Drops any pending save without persisting
+- **`destroy()`** — Cancels pending saves and resets state to `undefined`. Do not reuse the stash after this call.
+- **`toJSON()`** — Returns a plain snapshot of `state` for `JSON.stringify`. Returns `undefined` before `load()`.
 
 ## Important Notes
 
 ### Type constraints
 
-- State type `T` must be structured-cloneable/serializable
-- Functions, DOM nodes, and certain class instances will not work properly
-- Use plain objects, arrays, primitives, and serializable data only
+- Type `T` must be structured-cloneable
+- Functions, DOM nodes and some class instances throw on clone
+- Use plain objects and arrays with serializable data
 
 ### Reactivity best practices
 
-- Mutate state fields directly: `stash.state!.theme = 'dark'` (use `!` after `load()` or `?.` for safety)
-- Avoid replacing the entire state object
-- Use `$state.snapshot(stash.state)` to get a non-reactive copy for external use (check for `undefined` first)
+- Edit fields directly: `settings.state!.theme = 'dark'`. Use `!` after `load()`, or `?.`.
+- Do not replace the whole state object
+- Check for `undefined` first. Read outside Svelte through `$state.snapshot(settings.state)`.
 
 ## License
 
